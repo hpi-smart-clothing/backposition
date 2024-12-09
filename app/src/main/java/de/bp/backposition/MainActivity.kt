@@ -48,6 +48,7 @@ import androidx.core.app.ActivityCompat
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.accompanist.permissions.shouldShowRationale
+import com.xsens.dot.android.sdk.models.DotDevice
 import kotlin.contracts.contract
 
 class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback {
@@ -95,7 +96,7 @@ class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback 
     }
 
     override fun onDotConnectionChanged(p0: String?, p1: Int) {
-        TODO("Not yet implemented")
+        Log.d("BT", "Connection Changed")
     }
 
     override fun onDotServicesDiscovered(p0: String?, p1: Int) {
@@ -151,10 +152,15 @@ class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback 
     }
 
     override fun onDotScanned(p0: BluetoothDevice, p1: Int) {
-        println("onDotScannedHalloooo")
-        Log.d("BT", "Haloooo")
         val name = p0.name
-        val adress = p0.address
+        val address = p0.address
+        val newDot = DotDevice(applicationContext, p0, this)
+        Log.d("BT", newDot.toString())
+        Log.d("BT", "Found Device: $name")
+        if (name != null) {
+            newDot.connect()
+            Log.d("BT", "Connected to: $name")
+        }
     }
 }
 
