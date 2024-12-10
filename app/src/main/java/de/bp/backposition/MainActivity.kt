@@ -3,42 +3,41 @@ import android.Manifest
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.le.ScanSettings
-import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.compose.*
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.xsens.dot.android.sdk.DotSdk
 import com.xsens.dot.android.sdk.events.DotData
 import com.xsens.dot.android.sdk.interfaces.DotDeviceCallback
 import com.xsens.dot.android.sdk.interfaces.DotScannerCallback
+import com.xsens.dot.android.sdk.interfaces.DotSyncCallback
+import com.xsens.dot.android.sdk.models.DotDevice
+import com.xsens.dot.android.sdk.models.DotPayload.PAYLOAD_TYPE_ORIENTATION_EULER
+import com.xsens.dot.android.sdk.models.DotSyncManager
 import com.xsens.dot.android.sdk.models.FilterProfileInfo
 import com.xsens.dot.android.sdk.utils.DotScanner
 import de.bp.backposition.ui.theme.BackPositionTheme
-import java.util.ArrayList
-import android.util.Log
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.rememberPermissionState
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Button
-import com.google.accompanist.permissions.rememberMultiplePermissionsState
-import com.google.accompanist.permissions.shouldShowRationale
-import com.xsens.dot.android.sdk.models.DotDevice
-import kotlin.contracts.contract
+import java.util.HashMap
 
-class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback {
+
+class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback, DotSyncCallback {
     val discoveredDots = ArrayList<String>()
     val connectedDots = ArrayList<DotDevice>()
+    val angleX = mutableStateOf("N/A")
+    val angleY = mutableStateOf("N/A")
+    val angleZ = mutableStateOf("N/A")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         DotSdk.setDebugEnabled(true)
@@ -53,9 +52,14 @@ class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback 
 
     @Composable
     fun Content(){
+        val shownTextX by angleX
+        val shownTextY by angleY
+        val shownTextZ by angleZ
         Column {
-            Button(onClick = {}) {Text(text = "request Permission") }
             RequestBluetoothPermission()
+            Text(text = "X: "+ shownTextX)
+            Text(text = "Y: "+ shownTextY)
+            Text(text = "Z: "+ shownTextZ)
         }
     }
 
@@ -104,8 +108,11 @@ class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback 
         Log.d("BT", "Battery Changed")
     }
 
-    override fun onDotDataChanged(p0: String?, p1: DotData?) {
+    override fun onDotDataChanged(address: String?, dotData: DotData?) {
         Log.d("BT", "Data Changed")
+        angleX.value = dotData?.euler!![0].toString()
+        angleY.value = dotData?.euler!![1].toString()
+        angleZ.value = dotData?.euler!![2].toString()
     }
 
     override fun onDotInitDone(p0: String?) {
@@ -113,7 +120,16 @@ class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback 
         Log.d("BT", "--------FIRST DATA--------")
         Log.d("BT", connectedDots[0].firmwareVersion)
         Log.d("BT", "Battery: " + connectedDots[0].batteryPercentage)
-        connectedDots[0].identifyDevice()
+        //connectedDots[0].identifyDevice()
+        connectedDots[0].measurementMode = PAYLOAD_TYPE_ORIENTATION_EULER
+        connectedDots[0].startMeasuring()
+
+//        if (!connectedDots[0].isSynced){
+//            connectedDots[0].isRootDevice = true
+//            DotSyncManager.getInstance(this).startSyncing(connectedDots, 666)
+//        }else{
+//            Log.d("BT", "Already Synced")
+//        }
 
     }
 
@@ -157,12 +173,39 @@ class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback 
                 if (name != null) {
                     newDot.connect()
                     connectedDots.add(newDot)
+                    Log.d("BT", connectedDots.toString())
                     Log.d("BT", "Connected to: $name")
                 }
             }else{
                 Log.d("BT", "Device $name already discovered")
             }
         }
+    }
+
+
+    // Syncing
+    override fun onSyncingStarted(p0: String?, p1: Boolean, p2: Int) {
+        Log.d("BT", "Syncing Started")
+    }
+
+    override fun onSyncingProgress(p0: Int, p1: Int) {
+        Log.d("BT", "Syncing Progress " + p0 +" "+ p1)
+    }
+
+    override fun onSyncingResult(p0: String?, p1: Boolean, p2: Int) {
+        Log.d("BT", "Syncing Result" + p1)
+    }
+
+    override fun onSyncingDone(syncingResultMap: HashMap<String, Boolean>?, isSuccess: Boolean, p2: Int) {
+        Log.d("BT", "Syncing Done")
+        if (isSuccess){
+            connectedDots[0].measurementMode = PAYLOAD_TYPE_ORIENTATION_EULER
+            connectedDots[0].startMeasuring()
+        }
+    }
+
+    override fun onSyncingStopped(p0: String?, p1: Boolean, p2: Int) {
+        Log.d("BT", "Syncing Stopped")
     }
 }
 
