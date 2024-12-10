@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "de.bp.backposition"
-        minSdk = 28
+        minSdk = 34
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
