@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.sp
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.xsens.dot.android.sdk.DotSdk
@@ -25,7 +26,6 @@ import com.xsens.dot.android.sdk.interfaces.DotScannerCallback
 import com.xsens.dot.android.sdk.interfaces.DotSyncCallback
 import com.xsens.dot.android.sdk.models.DotDevice
 import com.xsens.dot.android.sdk.models.DotPayload.PAYLOAD_TYPE_ORIENTATION_EULER
-import com.xsens.dot.android.sdk.models.DotSyncManager
 import com.xsens.dot.android.sdk.models.FilterProfileInfo
 import com.xsens.dot.android.sdk.utils.DotScanner
 import de.bp.backposition.ui.theme.BackPositionTheme
@@ -35,9 +35,13 @@ import java.util.HashMap
 class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback, DotSyncCallback {
     val discoveredDots = ArrayList<String>()
     val connectedDots = ArrayList<DotDevice>()
-    val angleX = mutableStateOf("N/A")
-    val angleY = mutableStateOf("N/A")
-    val angleZ = mutableStateOf("N/A")
+    val angleX1 = mutableStateOf("N/A")
+    val angleY1 = mutableStateOf("N/A")
+    val angleZ1 = mutableStateOf("N/A")
+    val angleX2 = mutableStateOf("N/A")
+    val angleY2 = mutableStateOf("N/A")
+    val angleZ2 = mutableStateOf("N/A")
+    val diffAngle = mutableStateOf("N/A")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         DotSdk.setDebugEnabled(true)
@@ -52,14 +56,28 @@ class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback,
 
     @Composable
     fun Content(){
-        val shownTextX by angleX
-        val shownTextY by angleY
-        val shownTextZ by angleZ
+        val shownTextX1 by angleX1
+        val shownTextY1 by angleY1
+        val shownTextZ1 by angleZ1
+
+        val shownTextX2 by angleX2
+        val shownTextY2 by angleY2
+        val shownTextZ2 by angleZ2
+
+        val shownDiff by diffAngle
+
         Column {
             RequestBluetoothPermission()
-            Text(text = "X: "+ shownTextX)
-            Text(text = "Y: "+ shownTextY)
-            Text(text = "Z: "+ shownTextZ)
+            Text("Sensor 1:")
+            Text(text = "X: "+ shownTextX1)
+            Text(text = "Y: "+ shownTextY1)
+            Text(text = "Z: "+ shownTextZ1)
+            Text("Sensor 2:")
+            Text(text = "X: "+ shownTextX2)
+            Text(text = "Y: "+ shownTextY2)
+            Text(text = "Z: "+ shownTextZ2)
+            Text("Differenz X:")
+            Text(text = shownDiff, fontSize = 50.sp)
         }
     }
 
@@ -110,19 +128,34 @@ class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback,
 
     override fun onDotDataChanged(address: String?, dotData: DotData?) {
         Log.d("BT", "Data Changed")
-        angleX.value = dotData?.euler!![0].toString()
-        angleY.value = dotData?.euler!![1].toString()
-        angleZ.value = dotData?.euler!![2].toString()
+        if (address == connectedDots[0].address){
+            angleX1.value = dotData?.euler!![0].toString()
+            angleY1.value = dotData?.euler!![1].toString()
+            angleZ1.value = dotData?.euler!![2].toString()
+        }else{
+            angleX2.value = dotData?.euler!![0].toString()
+            angleY2.value = dotData?.euler!![1].toString()
+            angleZ2.value = dotData?.euler!![2].toString()
+        }
+        diffAngle.value = (angleX1.value.toFloat() - angleX2.value.toFloat()).toString()
     }
 
-    override fun onDotInitDone(p0: String?) {
+    override fun onDotInitDone(address: String?) {
         Log.d("BT", "Init Done")
         Log.d("BT", "--------FIRST DATA--------")
         Log.d("BT", connectedDots[0].firmwareVersion)
         Log.d("BT", "Battery: " + connectedDots[0].batteryPercentage)
         //connectedDots[0].identifyDevice()
-        connectedDots[0].measurementMode = PAYLOAD_TYPE_ORIENTATION_EULER
-        connectedDots[0].startMeasuring()
+
+        // connectedDots[0].measurementMode = PAYLOAD_TYPE_ORIENTATION_EULER
+        // connectedDots[0].startMeasuring()
+
+        for (dot in connectedDots){
+            if(dot.address == address){
+                dot.measurementMode = PAYLOAD_TYPE_ORIENTATION_EULER
+                dot.startMeasuring()
+            }
+        }
 
 //        if (!connectedDots[0].isSynced){
 //            connectedDots[0].isRootDevice = true
