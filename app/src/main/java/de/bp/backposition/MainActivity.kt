@@ -3,19 +3,32 @@ import android.Manifest
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.le.ScanSettings
+import android.content.Context
 import android.os.Bundle
+import android.os.CombinedVibration
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -30,28 +43,52 @@ import com.xsens.dot.android.sdk.models.FilterProfileInfo
 import com.xsens.dot.android.sdk.utils.DotScanner
 import de.bp.backposition.ui.theme.BackPositionTheme
 import java.util.HashMap
+import kotlin.math.abs
 
 
 class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback, DotSyncCallback {
     val discoveredDots = ArrayList<String>()
     val connectedDots = ArrayList<DotDevice>()
-    val angleX1 = mutableStateOf("N/A")
-    val angleY1 = mutableStateOf("N/A")
-    val angleZ1 = mutableStateOf("N/A")
-    val angleX2 = mutableStateOf("N/A")
-    val angleY2 = mutableStateOf("N/A")
-    val angleZ2 = mutableStateOf("N/A")
-    val diffAngle = mutableStateOf("N/A")
+    val angleX1 = mutableStateOf("0")
+    val angleY1 = mutableStateOf("0")
+    val angleZ1 = mutableStateOf("0")
+    val angleX2 = mutableStateOf("0")
+    val angleY2 = mutableStateOf("0")
+    val angleZ2 = mutableStateOf("0")
+    val diffAngle = mutableStateOf("0")
+    var warnThreshold = 90f
+    var shouldWarn = false
+    var lastVibration = System.currentTimeMillis()
+
+    lateinit var vibManager: VibratorManager
+    lateinit var vib: Vibrator
+
+    var dot1offset = 0.0
+    var dot2offset = 0.0
+    var updateNulls = arrayOf(false, false)
+    var RELEVANT_AXIS = 0
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        DotSdk.setDebugEnabled(true)
+        vibManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+        vib = vibManager.defaultVibrator
+
+        DotSdk.setDebugEnabled(false)
         DotSdk.setReconnectEnabled(true)
-        enableEdgeToEdge()
         setContent {
             BackPositionTheme {
                 Content()
             }
         }
+    }
+
+    fun vibrate(){
+        val now = System.currentTimeMillis()
+        if (now - lastVibration > 1000){
+            lastVibration = now
+            val vibrationEffect = VibrationEffect.createOneShot(1000, VibrationEffect.DEFAULT_AMPLITUDE)
+            vib.vibrate(vibrationEffect)
+        }
+
     }
 
     @Composable
@@ -66,7 +103,11 @@ class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback,
 
         val shownDiff by diffAngle
 
-        Column {
+        var sliderPosition by remember { mutableFloatStateOf(90f) }
+        var toggleState by remember { mutableStateOf(false) }
+
+
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
             RequestBluetoothPermission()
             Text("Sensor 1:")
             Text(text = "X: "+ shownTextX1)
@@ -78,6 +119,24 @@ class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback,
             Text(text = "Z: "+ shownTextZ2)
             Text("Differenz X:")
             Text(text = shownDiff, fontSize = 50.sp)
+            Button(onClick = {updateNulls = arrayOf(true, true)}) { Text("Calibrate") }
+            Slider(
+                value = sliderPosition,
+                onValueChange = {
+                    sliderPosition = it
+                    warnThreshold = it
+                },
+                valueRange = 0f .. 100f,
+
+            )
+            Text(text = warnThreshold.toString())
+            Switch(
+                checked = toggleState,
+                onCheckedChange = {
+                    toggleState = it
+                    shouldWarn = it
+                }
+            )
         }
     }
 
@@ -126,18 +185,41 @@ class MainActivity : ComponentActivity(), DotDeviceCallback, DotScannerCallback,
         Log.d("BT", "Battery Changed")
     }
 
+    fun intervalWrap(x: Double): Double{
+        if (x > 180){
+            return x-360
+        }else if(x < -180){
+            return 360+x
+        }else{
+            return x
+        }
+    }
+
     override fun onDotDataChanged(address: String?, dotData: DotData?) {
-        Log.d("BT", "Data Changed")
         if (address == connectedDots[0].address){
+            if (updateNulls[0]){
+                Log.d("DATA_PROCESSING", "Calibrated 1")
+                dot1offset = dotData?.euler!![RELEVANT_AXIS]
+                updateNulls[0] = false
+            }
             angleX1.value = dotData?.euler!![0].toString()
             angleY1.value = dotData?.euler!![1].toString()
             angleZ1.value = dotData?.euler!![2].toString()
         }else{
+            if (updateNulls[1]){
+                Log.d("DATA_PROCESSING", "Calibrated 2")
+                dot2offset = dotData?.euler!![RELEVANT_AXIS]
+                updateNulls[1] = false
+            }
             angleX2.value = dotData?.euler!![0].toString()
             angleY2.value = dotData?.euler!![1].toString()
             angleZ2.value = dotData?.euler!![2].toString()
         }
-        diffAngle.value = (angleX1.value.toFloat() - angleX2.value.toFloat()).toString()
+
+        diffAngle.value = (intervalWrap(intervalWrap(angleX1.value.toDouble() - dot1offset) - intervalWrap(angleX2.value.toDouble() - dot2offset))).toInt().toString()
+        if (abs(diffAngle.value.toDouble()) > warnThreshold && shouldWarn){
+            vibrate()
+        }
     }
 
     override fun onDotInitDone(address: String?) {
